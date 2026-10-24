@@ -39,6 +39,7 @@ async def remove_entry(bot: Bot, num: int, ban: bool = False, by: str = "admin")
         if lst and num in lst:
             lst.remove(num)
             voters.append(int(uid))
+            store.log_vote(int(uid), e["nom"], num, store.REMOVED)
     e["removed_votes"] = voters
     if ban:
         ban_user(e["owner"])
@@ -87,7 +88,7 @@ def ban_user(uid: int) -> int:
     count = 0
     for nom, nums in taken.items():
         for n in nums:
-            store.log_vote(uid, nom, n, -1)
+            store.log_vote(uid, nom, n, store.REMOVED)
             saved.setdefault(nom, []).append(n)
             count += 1
     store.save()
@@ -106,7 +107,7 @@ def unban_user(uid: int) -> tuple[int, int]:
             e = get(n)
             if e and e["status"] in ("published", "queued") and n not in mine and len(mine) < settings.max_votes:
                 mine.append(n)
-                store.log_vote(uid, nom, n, 1)
+                store.log_vote(uid, nom, n, store.RESTORED)
                 back += 1
             elif e and e["status"] == "removed" and uid not in e.get("removed_votes", []):
                 e.setdefault("removed_votes", []).append(uid)   # костюм зараз знято: повернеться з /restore
@@ -149,6 +150,7 @@ async def restore_entry(bot: Bot, actor, num_arg: str) -> RestoreResult:
         lst = db["votes"].setdefault(str(uid), {}).setdefault(e["nom"], [])
         if e["num"] not in lst and len(lst) < settings.max_votes:
             lst.append(e["num"])
+            store.log_vote(uid, e["nom"], e["num"], store.RESTORED)
             back += 1
         else:
             skipped += 1

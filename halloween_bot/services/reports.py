@@ -91,7 +91,7 @@ def audit_entry(e: dict) -> tuple[str, list[str]]:
     for ts, uid, _nom, _n, d in events:
         if d > 0:
             last_plus[uid] = ts
-    peak, at = max_per_minute([x[0] for x in events if x[4] > 0])
+    peak, at = max_per_minute([x[0] for x in events if x[4] == 1])
     head = "\n".join([
         f"🔎 <b>Аудит №{num}</b> «{esc(e['title'])}» · {author_line(e)}",
         f"Статус: {e['status']}",
@@ -105,13 +105,16 @@ def audit_entry(e: dict) -> tuple[str, list[str]]:
     return head, vlines
 
 
+ACTIONS = {1: "vote", -1: "unvote", 2: "restored (admin)", -2: "removed (admin)"}
+
+
 def votelog_csv() -> bytes:
     buf = io.StringIO()
     w = csv.writer(buf)
     w.writerow(["time", "voter_id", "voter", "nomination", "entry", "action"])
     for ts, uid, nom, num, d in store.vlog:
         w.writerow([time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(ts)), uid, name_of(uid),
-                    nom, num, "vote" if d > 0 else "unvote"])
+                    nom, num, ACTIONS.get(d, str(d))])
     return ("﻿" + buf.getvalue()).encode("utf-8")       # BOM, щоб Excel показав кирилицю
 
 

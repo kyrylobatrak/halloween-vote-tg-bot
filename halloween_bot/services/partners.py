@@ -52,6 +52,7 @@ async def _bind(bot: Bot, e: dict, uid: int, display: str) -> str:
     my = db["votes"].get(str(uid), {}).get("pair", [])
     if e["num"] in my:                               # голос за свою ж пару анулюємо
         my.remove(e["num"])
+        store.log_vote(uid, "pair", e["num"], store.REMOVED)
     note = ""
     if e["status"] == "waiting":                     # пара чекала на підтвердження — тепер у канал
         e["status"] = "queued"

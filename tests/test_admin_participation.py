@@ -79,7 +79,7 @@ def test_ban_removes_all_votes_and_unban_returns_them(tg):
         assert db["votes"][str(ALICE["id"])]["solo"] == []         # …і голоси ЗА його костюм теж
         await tg.send(OWNER, "/results")
         assert "<b>0</b>" in tg.fake.last_to(OWNER["id"]) and "<b>1</b>" not in tg.fake.last_to(OWNER["id"])
-        minus = [r for r in tg_vlog() if r[1] == BOBBY["id"] and r[4] == -1]
+        minus = [r for r in tg_vlog() if r[1] == BOBBY["id"] and r[4] == -2]       # знято модерацією
         assert len(minus) == 3                                     # журнал голосів це бачить
         # розбан: голоси повертаються, крім тих, де костюм за цей час зняли
         await tg.send(OWNER, f"/del {n_carol}")

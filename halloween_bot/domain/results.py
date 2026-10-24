@@ -36,7 +36,7 @@ def bursts(vlog: list, threshold: int) -> list[tuple[int, int, int]]:
     """[(пік голосів за хвилину, номер, час початку)] для костюмів зі сплеском ≥ threshold."""
     plus: dict[int, list[int]] = {}
     for ts, _uid, _nom, num, d in vlog:
-        if d > 0:
+        if d == 1:                       # лише справжні тапи; повернення після /restore — не сплеск
             plus.setdefault(num, []).append(ts)
     rows = []
     for num, ts_list in plus.items():

@@ -205,3 +205,45 @@ def test_two_simultaneous_bans_of_same_voter_keep_votes_once(tg):
         assert db["banned"].count(BOBBY["id"]) == 1
     run(go())
 
+
+
+def test_vote_log_matches_results_after_removal_restore_ban(tg):
+    """/votelog і /audit мають сходитися з /results: «додано − знято» за журналом = голосів зараз,
+    навіть коли голоси зникали й поверталися через /del, /restore, /ban, /unban."""
+    from collections import Counter
+    from halloween_bot.domain.results import tally
+    from halloween_bot.storage import store
+
+    def check():
+        by_log = Counter()
+        for _ts, _uid, _nom, num, d in store.vlog:
+            by_log[num] += 1 if d > 0 else -1
+        now = tally()
+        assert {n: by_log[n] for n in by_log if by_log[n]} == {n: c for n, c in now.items() if c}
+
+    async def go():
+        settings.max_votes, settings.tap_guard = 1, 0
+        await tg.setup_contest(OWNER)
+        n1 = await tg.submit_solo(OWNER, "a", "Вампір")
+        n2 = await tg.submit_solo(BOBBY, "b", "Відьма")
+        n3 = await tg.submit_solo(CAROL, "c", "Зомбі")
+        await tg.member(BOBBY["id"], CAROL["id"])
+        await tg.vote(BOBBY, n1)
+        await tg.vote(CAROL, n1)
+        await tg.vote(OWNER, n2)
+        check()
+        await tg.send(OWNER, f"/del {n1}")
+        check()
+        await tg.vote(BOBBY, n3)
+        await tg.send(OWNER, f"/restore {n1}")          # голос C повертається, B — ні (ліміт)
+        check()
+        await tg.send(OWNER, f"/ban {n2}")              # бан B: його голос за №3 знімається
+        check()
+        await tg.send(OWNER, f"/unban {BOBBY['id']}")
+        await tg.send(OWNER, f"/restore {n2}")
+        check()
+        # /audit не вважає повернені голоси «сплеском» накрутки
+        settings.burst_per_min = 1
+        await tg.send(OWNER, "/audit")
+        assert f"⚠️ №{n1}: 2 голосів" in tg.fake.last_to(OWNER["id"])   # 2 справжні тапи, без поверненого /restore
+    run(go())

@@ -172,6 +172,11 @@ class Store:
         """Позначити, що дані змінились. На диск їх скидає flush()."""
         self.dirty = True
 
+    # d у журналі голосів: 1 — голос, -1 — людина зняла голос сама,
+    # 2 / -2 — голос повернула / зняла модерація (/restore, /unban / /del, /ban, вихід з конкурсу).
+    # Тож «сума знаків» по костюму завжди = голосів зараз, а /audit бачить сплески лише справжніх тапів.
+    VOTE, UNVOTE, RESTORED, REMOVED = 1, -1, 2, -2
+
     def log_vote(self, uid: int, nom: str, num: int, d: int) -> None:
         row = [int(time.time()), uid, nom, num, d]
         self.vlog.append(row)

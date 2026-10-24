@@ -74,6 +74,16 @@ def check_invariants(tg: TG) -> None:
                 assert allowed(e["owner"]), f"не-гість {e['owner']} подав №{e['num']}"
                 if e.get("partner_id"):
                     assert allowed(e["partner_id"]), f"не-гість {e['partner_id']} у парі №{e['num']}"
+    # 6. журнал голосів сходиться з рахунком: для кожного костюма «додано − знято» = голосів зараз
+    from collections import Counter
+    from halloween_bot.domain.results import tally
+    from halloween_bot.storage import store
+    by_log = Counter()
+    for _ts, _uid, _nom, num, d in store.vlog:
+        by_log[num] += 1 if d > 0 else -1
+    now = tally()
+    diff = {n: (by_log[n], now[n]) for n in set(by_log) | set(now) if by_log[n] != now[n]}
+    assert not diff, f"журнал голосів не сходиться з рахунком (журнал, зараз): {diff}"
     # 4. кожна кнопка отримала відповідь
     answered = {c.callback_query_id for c in tg.fake.of(AnswerCallbackQuery)}
     missing = [f"cb{i}" for i in range(1, tg._cb + 1) if f"cb{i}" not in answered]
