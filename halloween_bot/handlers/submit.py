@@ -35,7 +35,7 @@ async def check_photo(bot: Bot, m: Message, exclude: int | None = None):
         ph = None
     dup, exact = find_dup(puid, ph, exclude=exclude, user_id=m.from_user.id)
     if exact:
-        where = f"№{dup['num']}" if active(dup) else f"№{dup['num']}, його зняли адміни (помилка? хай повернуть: /restore {dup['num']})"
+        where = f"№{dup['num']}" + ("" if active(dup) else f" (знято з конкурсу; якщо це твій костюм і його зняли помилково, адмін поверне: /restore {dup['num']})")
         await m.answer(f"🙅 Це фото вже подавали в конкурс: {where}. Надішли власне фото костюма.")
         return None
     return puid, ph, (dup["num"] if dup else None)

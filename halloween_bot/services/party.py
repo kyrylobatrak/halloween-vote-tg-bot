@@ -114,6 +114,16 @@ async def on_party_bot_status(bot: Bot, chat, actor, new_member) -> None:
         if not is_admin(actor.id):
             log.warning("Бота додав у чат «%s» не-адмін %s, ігнорую", chat.title, actor.id)
             return
+        if db["party_chat_id"] and db["party_chat_id"] != chat.id:
+            # бота додали ще в якусь групу (оргчат, тестовий чат) — чат туси НЕ підміняємо,
+            # інакше бот почав би відмовляти всім гостям
+            log.warning("Бота додали в групу «%s», але чат туси вже «%s» — не міняю", chat.title, db["party_title"])
+            for a in admin_ids():
+                await safe_send(bot, a, f"ℹ️ Бота додали в групу «{title}», але чат туси вже підключено: "
+                                        f"«{esc(db['party_title'] or '')}». Гостей перевіряю за ним. "
+                                        "Якщо чат туси справді інший: прибери бота зі старого чату, "
+                                        "потім прибери й додай знову в новий.")
+            return
         changed = db["party_chat_id"] != chat.id
         db["party_chat_id"], db["party_title"] = chat.id, chat.title or ""
         rt.party_cache.clear()

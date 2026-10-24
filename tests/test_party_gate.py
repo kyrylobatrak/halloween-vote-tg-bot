@@ -227,3 +227,46 @@ def test_group_migration_detected_on_member_check(tg):
         assert "зараховано" in await tg.vote(BOBBY, n)
         assert db["party_chat_id"] == SUPER and seen[:2] == [PARTY, SUPER]
     run(go())
+
+
+def test_concurrent_confirms_with_party_check_still_one_pair(tg):
+    """Перевірка гостя йде в Telegram (пауза). Два одночасні «Так, це я» не мають записати людину у дві пари."""
+    import asyncio
+
+    async def go():
+        await party_contest(tg)
+        await tg.send(CAROL, "/start")
+        await tg.guest(CAROL["id"])
+        p1 = await tg.submit_pair(ALICE, "@carol_m", "c1", "Перша")
+        p2 = await tg.submit_pair(BOBBY, "@carol_m", "c2", "Друга")
+        rt.party_cache.clear()                       # змусити бота питати Telegram
+        tg.fake.delay = 0.02
+        await asyncio.gather(tg.tap(CAROL, f"pc:{p1}"), tg.tap(CAROL, f"pc:{p2}"))
+        tg.fake.delay = 0
+        confirmed = [e["num"] for e in db["entries"].values() if e.get("partner_id") == CAROL["id"]]
+        assert len(confirmed) == 1, f"Керол у двох парах: {confirmed}"
+    run(go())
+
+
+def test_adding_bot_to_another_group_does_not_replace_party_chat(tg):
+    """Адмін додав бота в оргчат — чат туси лишається тим самим, гості й далі голосують."""
+    async def go():
+        await party_contest(tg)
+        n = await tg.submit_solo(ALICE, "a1", "Відьма")
+        botu = {"id": 123456, "is_bot": True, "first_name": "Bot", "username": "hw_test_bot"}
+        import time as _t
+        await tg._feed({"my_chat_member": {
+            "chat": {"id": -1005555, "type": "supergroup", "title": "Оргчат"}, "from": OWNER,
+            "date": int(_t.time()), "old_chat_member": {"status": "left", "user": botu},
+            "new_chat_member": {"status": "member", "user": botu}}})
+        assert db["party_chat_id"] == PARTY
+        assert "чат туси вже підключено" in tg.fake.last_to(OWNER["id"])
+        assert "зараховано" in await tg.vote(BOBBY, n)
+        # свідома зміна: прибрали зі старого — тоді новий чат приймається
+        await tg.party_bot(OWNER, "left")
+        await tg._feed({"my_chat_member": {
+            "chat": {"id": -1005555, "type": "supergroup", "title": "Оргчат"}, "from": OWNER,
+            "date": int(_t.time()), "old_chat_member": {"status": "left", "user": botu},
+            "new_chat_member": {"status": "member", "user": botu}}})
+        assert db["party_chat_id"] == -1005555
+    run(go())

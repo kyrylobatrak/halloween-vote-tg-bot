@@ -188,3 +188,40 @@ def test_my_votes(tg):
         await tg.send(VOTER, "/myvotes")
         assert "ще не голосував" in tg.fake.last_to(VOTER["id"])
     run(go())
+
+
+def test_double_remove_does_not_lose_votes_for_restore(tg):
+    """Адмін тисне 🗑 під копією і водночас інший пише /del: видалення пауза (запит у Telegram).
+    Друге видалення не має затерти список голосів, які /restore поверне."""
+    import asyncio
+
+    async def go():
+        await contest(tg)
+        assert db["entries"]["1"]["status"] == "published"
+        voters_before = sorted(int(u) for u, v in db["votes"].items() if 1 in v.get("solo", []))
+        assert voters_before
+        tg.fake.delay = 0.02
+        await asyncio.gather(tg.tap(ADMIN2, "del:1"), tg.send(OWNER, "/del 1"))
+        tg.fake.delay = 0
+        assert sorted(db["entries"]["1"]["removed_votes"]) == voters_before
+        await tg.send(OWNER, "/restore 1")
+        assert f"Голосів відновлено: {len(voters_before)}" in tg.fake.last_to(OWNER["id"])
+    run(go())
+
+
+def test_old_post_that_cannot_be_deleted_is_marked_removed(tg):
+    """Пост старший за 48 год: Telegram не дає боту його видалити. Тоді прибираємо кнопку й пишемо «знято»."""
+    from aiogram.exceptions import TelegramBadRequest
+    from aiogram.methods import EditMessageCaption
+
+    def too_old(m):
+        raise TelegramBadRequest(method=m, message="Bad Request: message can't be deleted")
+
+    async def go():
+        await contest(tg)
+        tg.fake.hooks["DeleteMessage"] = too_old
+        await tg.send(OWNER, "/del 1")
+        assert db["entries"]["1"]["status"] == "removed"
+        edits = [c for c in tg.fake.of(EditMessageCaption) if c.message_id == db["entries"]["1"]["msg_id"]]
+        assert edits and "знято з конкурсу" in edits[-1].caption and edits[-1].reply_markup is None
+    run(go())

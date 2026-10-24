@@ -3,7 +3,7 @@ import asyncio
 
 from aiogram.methods import AnswerCallbackQuery
 
-from conftest import ALICE, BOBBY, OWNER, run
+from conftest import ALICE, BOBBY, CAROL, OWNER, run
 from halloween_bot import app
 from halloween_bot.storage import db
 
@@ -56,7 +56,13 @@ def test_concurrent_pairs_with_same_partner(tg):
             await tg.send(u, "Пара з Керол")
         await asyncio.gather(tg.tap(ALICE, "pub"), tg.tap(BOBBY, "pub"))
         await tg.drain()
-        assert db["seq"] == 1, "одна людина = одна пара навіть при одночасній подачі"
+        assert db["seq"] == 2          # вписати Керол можуть обоє: поки вона не підтвердила, це лише запрошення
+        await tg.send(CAROL, "/start")
+        await asyncio.gather(tg.tap(CAROL, "pc:1"), tg.tap(CAROL, "pc:2"))     # одночасно «Так, це я» в обох
+        await tg.drain()
+        confirmed = [e for e in db["entries"].values() if e.get("partner_id") == CAROL["id"]]
+        assert len(confirmed) == 1, "одна людина = одна пара навіть при одночасному підтвердженні"
+        assert sum(1 for e in db["entries"].values() if e["status"] == "published") == 1
     run(go())
 
 
@@ -169,5 +175,30 @@ def test_stale_callback_after_offline_is_not_a_bug(tg):
         tg.fake.hooks["AnswerCallbackQuery"] = too_old
         await tg.vote(BOBBY, n)
         assert db["votes"][str(BOBBY["id"])]["solo"] == [n]
+        assert not rt.errors
+    run(go())
+
+
+def test_buttons_under_messages_older_than_48h(tg):
+    """Подачу відкрили за кілька днів до туси: партнер підтверджує пару, адмін тисне 🗑 під старою копією,
+    автор знімає костюм — під повідомленнями, яким понад 48 год. Telegram дає їх як «недоступні»."""
+    from conftest import CAROL
+    from halloween_bot.runtime import rt
+
+    async def go():
+        await tg.setup_contest(OWNER)
+        await tg.send(CAROL, "/start")
+        p = await tg.submit_pair(ALICE, "@carol_m", "o1", "Стара пара")
+        await tg.tap(CAROL, f"pc:{p}", old=True)
+        await tg.drain()
+        assert db["entries"][str(p)]["partner_id"] == CAROL["id"]
+        assert "Готово" in "".join(tg.fake.texts_to(CAROL["id"]))
+        n = await tg.submit_solo(BOBBY, "o2", "Старий соло")
+        assert "Видалено" in await tg.tap(OWNER, f"del:{n}", old=True)
+        await tg.send(OWNER, f"/restore {n}")
+        await tg.drain()
+        await tg.tap(BOBBY, f"wd:{n}", old=True)
+        await tg.tap(BOBBY, f"wdy:{n}", old=True)
+        assert db["entries"][str(n)]["status"] == "removed"
         assert not rt.errors
     run(go())

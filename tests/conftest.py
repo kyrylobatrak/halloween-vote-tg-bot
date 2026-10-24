@@ -83,7 +83,7 @@ def make_image(seed: int, noise: int = 0) -> bytes:
 
 # ───────────────────────── фейковий Telegram ─────────────────────────
 _TAG = re.compile(r'<(/?)(b|i|u|s|a|code|pre|tg-spoiler)(\s+href="[^"<>]*")?>')
-_ENTITY = re.compile(r"&(lt|gt|amp|quot|#\d+);")
+_ENTITY = re.compile(r"&(lt|gt|amp|quot|#\d+|#x[0-9a-fA-F]+);")
 
 
 def check_html(text: str) -> None:
@@ -143,6 +143,8 @@ class FakeTelegram(BaseSession):
                 except ValueError as ex:
                     bad(str(ex))
         if isinstance(method, SendMessage):
+            if not method.text.strip():
+                bad("message text is empty")
             if len(method.text) > 4096:
                 bad("message is too long")
             html_ok(method.text, method.parse_mode)
@@ -311,14 +313,19 @@ class TG:
     async def document(self, user: dict) -> None:
         await self._feed({"message": self._private(user, document={"file_id": "d", "file_unique_id": "du"})})
 
-    async def tap(self, user: dict, data: str, in_channel: bool = False, msg_id: int | None = None) -> str | None:
-        """Натиснути інлайн-кнопку. Повертає текст відповіді (спливаючого вікна), якщо був."""
+    async def tap(self, user: dict, data: str, in_channel: bool = False, msg_id: int | None = None,
+                  old: bool = False) -> str | None:
+        """Натиснути інлайн-кнопку. Повертає текст відповіді (спливаючого вікна), якщо був.
+        old=True — кнопка під повідомленням, старшим за 48 год: Telegram шле його як «недоступне»
+        (date=0, без тексту), і редагувати його бот уже не може."""
         self._cb += 1
         cid = f"cb{self._cb}"
         chat = ({"id": CHANNEL, "type": "channel", "title": "Costumes"} if in_channel
                 else {"id": user["id"], "type": "private", "first_name": user["first_name"]})
         message = {"message_id": msg_id or self.fake.next_mid(), "date": int(time.time()), "chat": chat,
                    "text": "x"}
+        if old:
+            message = {"message_id": message["message_id"], "date": 0, "chat": chat}
         await self._feed({"callback_query": {"id": cid, "from": user, "chat_instance": "ci",
                                              "data": data, "message": message}})
         answers = [c for c in self.fake.of(AnswerCallbackQuery) if c.callback_query_id == cid]

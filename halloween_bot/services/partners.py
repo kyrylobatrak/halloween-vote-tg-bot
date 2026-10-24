@@ -66,8 +66,13 @@ async def _bind(bot: Bot, e: dict, uid: int, display: str) -> str:
 
 async def confirm_partner(bot: Bot, user, num: int) -> str:
     """Партнер натиснув «Так, це я» або відкрив посилання-підтвердження."""
+    # спершу перевірка гостя (це запит у Telegram, тобто пауза), а вже потім «чи не в іншій парі»
+    # і запис партнера — без жодного await між ними, інакше два одночасні «Так, це я» в різних
+    # парах обидва пройшли б перевірку й записали людину у дві пари
+    if reason := await party_gate(bot, user):
+        return reason
     e = get(num)
-    if reason := _block(e, user, num) or await party_gate(bot, user):
+    if reason := _block(e, user, num):
         return reason
     note_user(user)
     if e.get("partner"):                             # автор вказав @username — перевіряємо його

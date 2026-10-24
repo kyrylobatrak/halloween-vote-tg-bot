@@ -41,12 +41,15 @@ def _cmds(rows) -> list[BotCommand]:
 
 async def sync_commands(bot: Bot, removed: int | None = None) -> None:
     """Не критично: якщо Telegram не прийняв меню, бот працює й без нього."""
-    try:
-        await bot.set_my_commands(_cmds(GUEST), scope=BotCommandScopeDefault())
-        for uid in admin_ids():
-            rows = OWNER if uid == db["owner"] else ADMIN
-            await bot.set_my_commands(_cmds(rows), scope=BotCommandScopeChat(chat_id=uid))
-        if removed is not None:
+    calls = [(GUEST, BotCommandScopeDefault())]
+    calls += [(OWNER if uid == db["owner"] else ADMIN, BotCommandScopeChat(chat_id=uid)) for uid in admin_ids()]
+    for rows, scope in calls:
+        try:
+            await bot.set_my_commands(_cmds(rows), scope=scope)
+        except Exception as ex:          # напр., адмін ще не натискав /start у цьому боті
+            log.warning("Не вдалося оновити меню команд (%s): %s", scope.type, ex)
+    if removed is not None:
+        try:
             await bot.delete_my_commands(scope=BotCommandScopeChat(chat_id=removed))
-    except Exception as ex:
-        log.warning("Не вдалося оновити меню команд: %s", ex)
+        except Exception as ex:
+            log.warning("Не вдалося прибрати меню колишнього адміна: %s", ex)

@@ -297,3 +297,59 @@ def test_own_withdrawn_photo_can_be_resubmitted_but_not_by_others(tg):
         await tg.send(OWNER, f"/del {n2}")
         assert await tg.submit_solo(ALICE, "same", "Відьма 3.0") is None
     run(go())
+
+
+def test_unconfirmed_partner_is_not_locked_by_someone_elses_pair(tg):
+    """Хтось (навіть помилившись у username) вписав Боббі в свою пару, Боббі не підтвердив.
+    Це не має заважати Боббі подати власну пару чи стати партнером у справжній парі."""
+    async def go():
+        await tg.setup_contest(OWNER)
+        await tg.send(BOBBY, "/start")
+        troll = await tg.submit_pair(EVE, "@bobby_k", "t1", "Чужа пара")
+        assert db["entries"][str(troll)]["status"] == "waiting"
+        own = await tg.submit_pair(BOBBY, "@carol_m", "b1", "Справжня пара")      # Боббі подає свою
+        assert own, "Боббі не зміг подати власну пару через чуже непідтверджене запрошення"
+        await tg.send(CAROL, "/start")
+        await tg.tap(CAROL, f"pc:{own}")
+        assert db["entries"][str(own)]["partner_id"] == CAROL["id"]
+        # тепер Боббі вже в парі — підтвердити чужу він не може (одна людина = одна пара)
+        await tg.tap(BOBBY, f"pc:{troll}")
+        assert db["entries"][str(troll)]["partner_id"] is None
+        assert "вже є в парі" in tg.fake.last_to(BOBBY["id"])
+        # і вписати Боббі в нову пару теж не можна — він уже підтверджений партнер/автор
+        await tg.send(DAVE, "/start")
+        await tg.tap(DAVE, "sub")
+        await tg.tap(DAVE, "nom:pair")
+        await tg.send(DAVE, "@bobby_k")
+        assert "вже є в парі" in tg.fake.last_to(DAVE["id"])
+    run(go())
+
+
+def test_named_partner_can_be_named_by_real_partner_too(tg):
+    """Двоє вписали того самого @carol_m. Пара, яку Керол підтвердила, — її; друга так і чекає."""
+    async def go():
+        await tg.setup_contest(OWNER)
+        await tg.send(CAROL, "/start")
+        p1 = await tg.submit_pair(EVE, "@carol_m", "c1", "Помилкова")
+        p2 = await tg.submit_pair(BOBBY, "@carol_m", "c2", "Справжня")
+        assert p1 and p2, "друга людина не змогла вписати Керол через першу (непідтверджену) пару"
+        await tg.tap(CAROL, f"pc:{p2}")
+        await tg.tap(CAROL, f"pc:{p1}")
+        assert db["entries"][str(p2)]["partner_id"] == CAROL["id"]
+        assert db["entries"][str(p1)]["partner_id"] is None
+    run(go())
+
+
+def test_apostrophes_in_names_and_titles(tg):
+    """Українські імена й назви з апострофом: у пості він як є, без сутностей &#x27;."""
+    from conftest import TG
+
+    async def go():
+        await tg.setup_contest(OWNER)
+        u = TG.user(301, None)
+        u["first_name"], u["last_name"] = "Мар'яна", "О'Ніл"
+        n = await tg.submit_solo(u, "ap1", "Сім'я Адамсів & «друзі»")
+        cap = tg.fake.channel_posts()[-1].caption
+        assert "Сім'я Адамсів &amp; «друзі»" in cap and "Мар'яна О'Ніл" in cap and "&#x27;" not in cap
+        assert db["entries"][str(n)]["title"] == "Сім'я Адамсів & «друзі»"
+    run(go())

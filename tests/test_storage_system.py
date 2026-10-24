@@ -374,3 +374,25 @@ def test_events_go_to_log(tg):
 def test_disable_quick_edit_is_safe_everywhere():
     """На Linux і в PyCharm (не справжня консоль) — просто False, без помилок."""
     assert system.disable_quick_edit() in (True, False)
+
+
+def test_background_loop_survives_unexpected_error():
+    """Запис на диск і бекапи — фонові задачі. Одна несподівана помилка не має їх зупинити."""
+    import asyncio
+    from halloween_bot.services.backups import forever
+    calls = []
+
+    async def step():
+        calls.append(1)
+        if len(calls) == 1:
+            raise RuntimeError("щось дивне")
+
+    async def go():
+        task = asyncio.create_task(forever("тест", lambda: 0, step))
+        for _ in range(50):
+            await asyncio.sleep(0)
+            if len(calls) >= 3:
+                break
+        task.cancel()
+        assert len(calls) >= 3, "цикл зупинився після першої помилки"
+    run(go())

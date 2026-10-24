@@ -32,11 +32,12 @@ async def mod_cb(c: CallbackQuery, bot: Bot):
     await admin_action(bot, c.from_user, "видалив і забанив автора" if act == "ban" else "видалив",
                        entry_label(get(n)) + f" · /restore {n}", alert=True)
     mark = ("🚫 Видалено + бан" if act == "ban" else "🗑 Видалено") + f" · /restore {n}"
-    try:
-        await c.message.edit_caption(caption=f"{c.message.html_text}\n\n<b>{mark}</b> ({esc(tag_of(c.from_user))})",
-                                     reply_markup=None)
-    except TelegramBadRequest:
-        pass
+    if isinstance(c.message, Message):            # копія старша за 48 год — Telegram не дає її редагувати
+        try:
+            await c.message.edit_caption(caption=f"{c.message.html_text}\n\n<b>{mark}</b> ({esc(tag_of(c.from_user))})",
+                                         reply_markup=None)
+        except TelegramBadRequest:
+            pass
     await c.answer(mark)
 
 

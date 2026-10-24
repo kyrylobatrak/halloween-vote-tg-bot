@@ -34,9 +34,14 @@ def is_participant(e: dict, user) -> bool:
 
 
 def pair_of(user, exclude: dict | None = None) -> dict | None:
-    """Активна парна заявка, де людина — автор або партнер."""
+    """Активна пара, де людина — автор або ПІДТВЕРДЖЕНИЙ партнер.
+
+    Того, кого лише вписали (@username) і хто ще не підтвердив, не рахуємо: інакше будь-хто,
+    навіть помилившись у username, заблокував би людині власну пару. Що людина в одній парі,
+    перевіряється ще раз, коли вона підтверджує участь."""
     for e in db["entries"].values():
-        if e is not exclude and e["nom"] == "pair" and active(e) and is_participant(e, user):
+        if (e is not exclude and e["nom"] == "pair" and active(e)
+                and user.id in (e["owner"], e.get("partner_id"))):
             return e
     return None
 

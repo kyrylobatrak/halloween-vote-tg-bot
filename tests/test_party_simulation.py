@@ -17,7 +17,7 @@ from halloween_bot.domain.people import is_admin
 from halloween_bot.runtime import rt
 from halloween_bot.storage import Store, db, store
 
-NASTY = ["<Діма & Co>", "Ярослав</b>", "Оля \"Відьма\"", "Я" * 64, "🎃🦇👻", "a&amp;b", "<i>курсив", "Тарас"]
+NASTY = ["<Діма & Co>", "Ярослав</b>", "Оля \"Відьма\"", "Мар'яна", "Сім'я Адамсів", "В'ячеслав 'Граф'", "Я" * 64, "🎃🦇👻", "a&amp;b", "<i>курсив", "Тарас"]
 
 
 def make_people(rnd: random.Random, n: int) -> list[dict]:

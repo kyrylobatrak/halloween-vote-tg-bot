@@ -35,10 +35,21 @@ async def flush_and_alert(bot: Bot | None) -> bool:
     return ok
 
 
-async def saver_loop(bot: Bot) -> None:
+async def forever(name: str, interval, step) -> None:
+    """Фонова задача, яку не вбити: будь-яка несподівана помилка в кроці — в лог, і працюємо далі.
+    Без цього одна дивна помилка тихо зупинила б запис на диск чи бекапи до кінця вечора."""
     while True:
-        await asyncio.sleep(settings.save_every)
-        await flush_and_alert(bot)
+        await asyncio.sleep(interval())
+        try:
+            await step()
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            log.exception("%s: збій, працюю далі", name)
+
+
+async def saver_loop(bot: Bot) -> None:
+    await forever("запис на диск", lambda: settings.save_every, lambda: flush_and_alert(bot))
 
 
 async def send_backup(bot: Bot, chat_id: int, silent: bool = False) -> None:
@@ -53,7 +64,8 @@ async def backup_tick(bot: Bot, state: dict) -> None:
     now = time.time()
     if now - state["last_local"] >= settings.local_backup_every and store.version != state["local_version"]:
         try:
-            await asyncio.to_thread(store.local_backup)
+            data = store.dump()                  # серіалізуємо тут, а не в потоці: дані міняються паралельно
+            await asyncio.to_thread(store.local_backup, data)
             state["local_version"], state["last_local"] = store.version, now
             rt.last_local_backup = now
         except OSError as ex:
@@ -72,6 +84,4 @@ async def backup_loop(bot: Bot) -> None:
     """Копія в backups/ щохвилини + бекап власнику в Telegram
     (кожні 3 хв під час голосування, інакше кожні 15 хв). Лише якщо щось змінилось."""
     state = {"local_version": -1, "tg_version": -1, "last_local": time.time(), "last_tg": time.time()}
-    while True:
-        await asyncio.sleep(20)
-        await backup_tick(bot, state)
+    await forever("бекапи", lambda: 20, lambda: backup_tick(bot, state))

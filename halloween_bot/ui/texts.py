@@ -8,7 +8,10 @@ from ..config import NOMS, settings
 from ..runtime import rt
 from ..storage import db
 
-esc = html.escape
+def esc(text) -> str:
+    """Екранування для parse_mode=HTML. Telegram вимагає замінювати лише <, > і &; апостроф
+    (Мар'яна, Сім'я Адамсів) і лапки лишаємо як є — без зайвих сутностей на кшталт &#x27;."""
+    return html.escape(str(text), quote=False)
 
 
 # ───────────── костюм ─────────────

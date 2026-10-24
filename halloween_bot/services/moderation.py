@@ -27,11 +27,8 @@ async def remove_entry(bot: Bot, num: int, ban: bool = False, by: str = "admin")
     e = get(num)
     if not e or e["status"] == "removed":
         return False
-    if e.get("msg_id"):
-        try:
-            await bot.delete_message(e.get("chat_id") or db["channel_id"], e["msg_id"])
-        except TelegramBadRequest:
-            pass
+    # усі зміни в даних — ДО першого await: інакше друге одночасне видалення (подвійний тап,
+    # кнопка + /del) пройшло б перевірку вище й затерло список голосів для /restore
     e["status"] = "removed"
     e["removed_by"] = by
     e["removed_at"] = int(time.time())
@@ -46,7 +43,29 @@ async def remove_entry(bot: Bot, num: int, ban: bool = False, by: str = "admin")
     if ban:
         ban_user(e["owner"])
     store.save()
+    if e.get("msg_id"):
+        await hide_post(bot, e)
     return True
+
+
+async def hide_post(bot: Bot, e: dict) -> None:
+    """Прибрати пост знятого костюма. Telegram не дає боту видаляти пости, старші за 48 год, —
+    тоді хоча б прибираємо кнопку й пишемо в підписі, що костюм знято."""
+    chat, mid = e.get("chat_id") or db["channel_id"], e["msg_id"]
+    try:
+        await bot.delete_message(chat, mid)
+        return
+    except TelegramBadRequest as ex:
+        if "not found" in str(ex).lower():
+            return                                # уже видалили руками
+        log.warning("Не вдалося видалити пост №%s (%s) — позначаю як знятий", e["num"], ex)
+    except Exception as ex:                       # мережа моргнула
+        log.warning("Не вдалося видалити пост №%s: %s", e["num"], ex)
+    try:
+        await bot.edit_message_caption(chat_id=chat, message_id=mid, reply_markup=None,
+                                       caption=f"🚫 <b>№{e['num']} знято з конкурсу</b>")
+    except Exception as ex:
+        log.warning("І позначити пост №%s не вдалося (видали його в каналі вручну): %s", e["num"], ex)
 
 
 def ban_refusal(num: int) -> str | None:
@@ -172,8 +191,10 @@ async def post_exists(bot: Bot, e: dict) -> bool | None:
             t = str(ex).lower()
             if "not modified" in t:
                 return True
-            if "not found" in t or "message_id_invalid" in t or "can't be edited" in t:
-                return False
+            if "not found" in t or "message_id_invalid" in t:
+                return False                      # пост справді видалено
+            # інші відмови («can't be edited», брак прав тощо) — НЕ доказ видалення: краще «невідомо»,
+            # ніж зняти з конкурсу живий костюм (а /results перевіряє саме лідерів)
             return None
         except Exception:
             return None

@@ -7,6 +7,7 @@ import time
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError, TelegramRetryAfter
+from aiogram.types import Message
 
 from ..config import settings
 from ..runtime import rt
@@ -70,7 +71,7 @@ async def channel_slot() -> None:
 async def set_buttons(message, markup=None) -> None:
     """Змінити/прибрати кнопки під повідомленням. Подвійний тап («message is not modified»)
     або надто старе повідомлення — не привід падати."""
-    if message is None:
+    if not isinstance(message, Message):          # None або «недоступне» (старше за 48 год) — не редагується
         return
     try:
         await message.edit_reply_markup(reply_markup=markup)

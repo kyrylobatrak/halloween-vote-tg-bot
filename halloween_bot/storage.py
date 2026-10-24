@@ -225,10 +225,11 @@ class Store:
             z.writestr("votes.log", "".join(json.dumps(x) + "\n" for x in self.vlog))
         return buf.getvalue()
 
-    def local_backup(self) -> None:
+    def local_backup(self, data: bytes | None = None) -> None:
+        """Копія в backups/. data — вже серіалізований стан (з циклу подій), щоб не читати db з потоку."""
         d = settings.backups_dir
         d.mkdir(parents=True, exist_ok=True)
-        write_atomic(d / time.strftime("data_%m%d_%H%M%S.json"), self.dump())
+        write_atomic(d / time.strftime("data_%m%d_%H%M%S.json"), data if data is not None else self.dump())
         if settings.votes_log_path.exists():   # журнал лише росте, тож тримаємо одну свіжу копію
             write_atomic(d / "votes.log", settings.votes_log_path.read_bytes())
         files = sorted(d.glob("data_*.json"))
