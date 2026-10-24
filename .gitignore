@@ -1,0 +1,13 @@
+.env
+data.json
+data.json.tmp
+votes.log
+bot.lock
+backups/
+venv/
+.venv/
+__pycache__/
+.idea/
+.pytest_cache/
+data.broken_*.json
+bot.log*
