@@ -13,6 +13,7 @@ import logging
 import time
 
 from aiogram import Bot
+from aiogram.exceptions import TelegramMigrateToChat
 
 from ..domain.people import admin_ids, is_admin
 from ..runtime import rt
@@ -40,14 +41,32 @@ async def is_guest(bot: Bot, uid: int) -> bool | None:
         ok, at = cached
         if time.time() - at < (POSITIVE_TTL if ok else NEGATIVE_TTL):
             return ok
-    try:
-        cm = await bot.get_chat_member(db["party_chat_id"], uid)
-    except Exception as ex:
-        log.warning("get_chat_member(чат туси, %s) failed: %s", uid, ex)
+    for _ in range(2):
+        try:
+            cm = await bot.get_chat_member(db["party_chat_id"], uid)
+            break
+        except TelegramMigrateToChat as ex:          # групу перетворили на супергрупу: новий ID
+            migrate_party(db["party_chat_id"], ex.migrate_to_chat_id)
+        except Exception as ex:
+            log.warning("get_chat_member(чат туси, %s) failed: %s", uid, ex)
+            return None
+    else:
         return None
     ok = member_status_ok(cm)
     rt.party_cache[uid] = (ok, time.time())
     return ok
+
+
+def migrate_party(old_id: int, new_id: int) -> bool:
+    """Telegram перетворив групу туси на супергрупу (понад 200 людей, деякі налаштування) —
+    у неї новий ID. Переходимо на нього, інакше бот не зміг би перевірити жодного гостя."""
+    if not db["party_chat_id"] or db["party_chat_id"] != old_id or old_id == new_id:
+        return False
+    db["party_chat_id"] = new_id
+    rt.party_cache.clear()
+    store.save()
+    log.warning("Чат туси став супергрупою: %s → %s", old_id, new_id)
+    return True
 
 
 async def party_gate(bot: Bot, user) -> str | None:

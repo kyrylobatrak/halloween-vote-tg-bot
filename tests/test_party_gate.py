@@ -166,3 +166,64 @@ def test_party_cache_is_cleared_on_restart_but_settings_persist(tg):
         rt.reset()
         assert db["party_chat_id"] == PARTY and db["channel_link_mode"] == "request"
     run(go())
+
+
+SUPER = -1007777777777          # новий ID після перетворення групи на супергрупу
+
+
+def _member_only_in(chat_id):
+    """Фейковий getChatMember: учасники є лише в чаті chat_id (стара група вже «мертва»)."""
+    from aiogram.exceptions import TelegramBadRequest
+    from aiogram.types import ChatMemberMember, User
+
+    def hook(m):
+        if m.chat_id in (PARTY, SUPER):
+            if m.chat_id != chat_id:
+                raise TelegramBadRequest(method=m, message="Bad Request: chat not found")
+            return ChatMemberMember(user=User(id=m.user_id, is_bot=False, first_name="U"))
+    return hook
+
+
+def test_group_migrated_to_supergroup_by_service_message(tg):
+    """Telegram сам перетворив чат туси на супергрупу — бот переходить на новий ID і далі пускає гостей."""
+    import time as _t
+
+    async def go():
+        await party_contest(tg)
+        n = await tg.submit_solo(ALICE, "a1", "Відьма")
+        await tg._feed({"message": {"message_id": 1, "date": int(_t.time()),
+                                    "chat": {"id": PARTY, "type": "group", "title": "Туса"},
+                                    "from": OWNER, "migrate_to_chat_id": SUPER}})
+        assert db["party_chat_id"] == SUPER
+        tg.fake.hooks["GetChatMember"] = _member_only_in(SUPER)
+        assert "зараховано" in await tg.vote(BOBBY, n)
+        # повідомлення «створено з групи» з боку супергрупи — нічого не ламає
+        await tg._feed({"message": {"message_id": 2, "date": int(_t.time()),
+                                    "chat": {"id": SUPER, "type": "supergroup", "title": "Туса"},
+                                    "from": OWNER, "migrate_from_chat_id": PARTY}})
+        assert db["party_chat_id"] == SUPER
+    run(go())
+
+
+def test_group_migration_detected_on_member_check(tg):
+    """Службове повідомлення бот пропустив (був вимкнений) — Telegram сам скаже новий ID на першій перевірці."""
+    from aiogram.exceptions import TelegramMigrateToChat
+
+    async def go():
+        await party_contest(tg)
+        n = await tg.submit_solo(ALICE, "a1", "Відьма")
+        rt.party_cache.clear()
+        seen = []
+
+        def migrated(m):
+            seen.append(m.chat_id)
+            if m.chat_id == PARTY:
+                raise TelegramMigrateToChat(method=m, message="group chat was upgraded to a supergroup chat",
+                                            migrate_to_chat_id=SUPER)
+            if m.chat_id == SUPER:
+                return __import__("aiogram").types.ChatMemberMember(
+                    user=__import__("aiogram").types.User(id=m.user_id, is_bot=False, first_name="U"))
+        tg.fake.hooks["GetChatMember"] = migrated
+        assert "зараховано" in await tg.vote(BOBBY, n)
+        assert db["party_chat_id"] == SUPER and seen[:2] == [PARTY, SUPER]
+    run(go())
